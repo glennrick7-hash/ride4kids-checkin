@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1"
+  >
+
+  <title>Ride4Kids Check-In</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    :root {
+      --navy: #172c48;
+      --orange: #ef7d22;
+      --cream: #fff8ef;
+      --green: #178a50;
+      --red: #b3261e;
+      --amber: #9a6400;
+      --gray: #667085;
+      --border: #d0d5dd;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--cream);
+      color: var(--navy);
+      font-family: Arial, Helvetica, sans-serif;
+    }
+
+    header {
+      padding: 24px 16px;
+      background: var(--navy);
+      color: white;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0 0 6px;
+      font-size: 27px;
+    }
+
+    header p {
+      margin: 0;
+      opacity: 0.9;
+    }
+
+    main {
+      width: min(100%, 560px);
+      margin: 0 auto;
+      padding: 18px;
+    }
+
+    .card {
+      margin-bottom: 16px;
+      padding: 18px;
+      background: white;
+      border-radius: 18px;
+      box-shadow: 0 6px 24px rgba(23, 44, 72, 0.1);
+    }
+
+    #reader {
+      width: 100%;
+      overflow: hidden;
+      border-radius: 14px;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 18px 0;
+      color: var(--gray);
+      font-size: 13px;
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+
+    .divider::before,
+    .divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
+    input {
+      width: 100%;
+      padding: 15px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      font-size: 18px;
+      text-transform: uppercase;
+    }
+
+    button {
+      width: 100%;
+      margin-top: 12px;
+      padding: 15px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--orange);
+      color: white;
+      font-size: 17px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
+    .secondary {
+      background: var(--navy);
+    }
+
+    .loading {
+      display: none;
+      padding: 16px;
+      text-align: center;
+      color: var(--gray);
+    }
+
+    .result {
+      display: none;
+      padding: 20px;
+      border-radius: 16px;
+      text-align: center;
+    }
+
+    .result.success {
+      display: block;
+      color: var(--green);
+      background: #eaf8f0;
+      border: 2px solid var(--green);
+    }
+
+    .result.warning {
+      display: block;
+      color: var(--amber);
+      background: #fff5d8;
+      border: 2px solid var(--amber);
+    }
+
+    .result.error {
+      display: block;
+      color: var(--red);
+      background: #fdecec;
+      border: 2px solid var(--red);
+    }
+
+    .icon {
+      margin-bottom: 8px;
+      font-size: 54px;
+    }
+
+    .participant-name {
+      margin: 10px 0 14px;
+      font-size: 25px;
+      font-weight: bold;
+    }
+
+    .details {
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(255,255,255,0.7);
+      text-align: left;
+      line-height: 1.8;
+    }
+
+    .help {
+      color: var(--gray);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>Ride4Kids Check-In</h1>
+    <p>Scan the participant QR code</p>
+  </header>
+
+  <main>
+    <section class="card">
+      <div id="reader"></div>
+
+      <div class="divider">or enter manually</div>
+
+      <label for="reference">Reference number</label>
+
+      <input
+        id="reference"
+        type="text"
+        placeholder="R4K-0001"
+        autocomplete="off"
+        autocapitalize="characters"
+      >
+
+      <button id="checkInButton" onclick="manualCheckIn()">
+        Check In Participant
+      </button>
+
+      <p class="help">
+        Open this page directly in Chrome or Safari and allow camera access.
+      </p>
+    </section>
+
+    <div id="loading" class="loading">
+      Processing check-in...
+    </div>
+
+    <section id="result" class="result"></section>
+
+    <button
+      id="nextButton"
+      class="secondary"
+      onclick="resetScanner()"
+      style="display:none;"
+    >
+      Scan Next Participant
+    </button>
+  </main>
+
+  <script>
+    /*
+     * Replace these two values.
+     */
+    const APPS_SCRIPT_URL =
+      "https://script.google.com/macros/s/AKfycbxrP1rfheiB7GPc9o5QPWn_FJGrRQ7Y8UXpBwgFSMgLIBUrFMAR5WUAVTVW1WOWGh_Tqg/exec";
+
+    const CHECKIN_KEY =
+      "R4K-2026-KCPB-9x4Q7m2L8p6V";
+
+    let scanner = null;
+    let scanLocked = false;
+    let callbackCounter = 0;
+
+    window.addEventListener("load", startScanner);
+
+    document
+      .getElementById("reference")
+      .addEventListener("keydown", function(event) {
+        if (event.key === "Enter") {
+          manualCheckIn();
+        }
+      });
+
+
+    function startScanner() {
+      scanner = new Html5QrcodeScanner(
+        "reader",
+        {
+          fps: 10,
+          qrbox: {
+            width: 250,
+            height: 250
+          },
+          rememberLastUsedCamera: true,
+          supportedScanTypes: [
+            Html5QrcodeScanType.SCAN_TYPE_CAMERA
+          ]
+        },
+        false
+      );
+
+      scanner.render(onScanSuccess, function() {});
+    }
+
+
+    function onScanSuccess(decodedText) {
+      if (scanLocked) {
+        return;
+      }
+
+      scanLocked = true;
+
+      if (scanner) {
+        scanner.clear().catch(function(error) {
+          console.warn(error);
+        });
+      }
+
+      submitCheckIn(decodedText);
+    }
+
+
+    function manualCheckIn() {
+      const input = document.getElementById("reference");
+      const value = input.value.trim();
+
+      if (!value) {
+        showError("Please enter a reference number.");
+        input.focus();
+        return;
+      }
+
+      submitCheckIn(value);
+    }
+
+
+    function submitCheckIn(value) {
+      setLoading(true);
+
+      callbackCounter++;
+
+      const callbackName =
+        "ride4kidsCallback_" + Date.now() + "_" + callbackCounter;
+
+      const script = document.createElement("script");
+
+      const timeoutId = setTimeout(function() {
+        cleanupJsonp(callbackName, script);
+        setLoading(false);
+        showError(
+          "The check-in server did not respond. Please try again."
+        );
+        document.getElementById("nextButton").style.display = "block";
+      }, 15000);
+
+      window[callbackName] = function(result) {
+        clearTimeout(timeoutId);
+        cleanupJsonp(callbackName, script);
+        setLoading(false);
+        displayResult(result);
+      };
+
+      const query = new URLSearchParams({
+        action: "checkin",
+        key: CHECKIN_KEY,
+        value: value,
+        callback: callbackName,
+        timestamp: String(Date.now())
+      });
+
+      script.src = APPS_SCRIPT_URL + "?" + query.toString();
+
+      script.onerror = function() {
+        clearTimeout(timeoutId);
+        cleanupJsonp(callbackName, script);
+        setLoading(false);
+        showError(
+          "Unable to connect to the check-in server."
+        );
+        document.getElementById("nextButton").style.display = "block";
+      };
+
+      document.body.appendChild(script);
+    }
+
+
+    function cleanupJsonp(callbackName, script) {
+      try {
+        delete window[callbackName];
+      } catch (error) {
+        window[callbackName] = undefined;
+      }
+
+      if (script && script.parentNode) {
+        script.parentNode.removeChild(script);
+      }
+    }
+
+
+    function displayResult(result) {
+      const resultBox = document.getElementById("result");
+      const nextButton = document.getElementById("nextButton");
+
+      if (result.success) {
+        resultBox.className = "result success";
+        resultBox.innerHTML = `
+          <div class="icon">✓</div>
+          <h2>Checked In</h2>
+
+          <div class="participant-name">
+            ${escapeHtml(result.firstName)}
+            ${escapeHtml(result.lastName)}
+          </div>
+
+          <div class="details">
+            <strong>Reference:</strong>
+            ${escapeHtml(result.reference)}<br>
+
+            <strong>Distance:</strong>
+            ${escapeHtml(result.distance || "-")}<br>
+
+            <strong>Team:</strong>
+            ${escapeHtml(result.team || "Individual rider")}<br>
+
+            <strong>Check-in time:</strong>
+            ${escapeHtml(result.checkInTime)}
+          </div>
+        `;
+
+      } else if (result.type === "already_checked_in") {
+        resultBox.className = "result warning";
+        resultBox.innerHTML = `
+          <div class="icon">!</div>
+          <h2>Already Checked In</h2>
+
+          <div class="participant-name">
+            ${escapeHtml(result.firstName)}
+            ${escapeHtml(result.lastName)}
+          </div>
+
+          <div class="details">
+            <strong>Reference:</strong>
+            ${escapeHtml(result.reference)}<br>
+
+            <strong>Previous check-in:</strong>
+            ${escapeHtml(
+              result.checkInTime || "Time not available"
+            )}
+          </div>
+        `;
+
+      } else {
+        resultBox.className = "result error";
+        resultBox.innerHTML = `
+          <div class="icon">×</div>
+          <h2>Check-In Failed</h2>
+          <p>${escapeHtml(result.message || "Unknown error.")}</p>
+        `;
+      }
+
+      nextButton.style.display = "block";
+    }
+
+
+    function showError(message) {
+      const resultBox = document.getElementById("result");
+
+      resultBox.className = "result error";
+      resultBox.innerHTML = `
+        <div class="icon">×</div>
+        <h2>Unable to Continue</h2>
+        <p>${escapeHtml(message)}</p>
+      `;
+    }
+
+
+    function setLoading(isLoading) {
+      document.getElementById("loading").style.display =
+        isLoading ? "block" : "none";
+
+      document.getElementById("checkInButton").disabled =
+        isLoading;
+    }
+
+
+    function resetScanner() {
+      scanLocked = false;
+
+      document.getElementById("result").className = "result";
+      document.getElementById("result").innerHTML = "";
+      document.getElementById("nextButton").style.display = "none";
+      document.getElementById("reference").value = "";
+
+      setLoading(false);
+
+      document.getElementById("reader").innerHTML = "";
+      startScanner();
+    }
+
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
