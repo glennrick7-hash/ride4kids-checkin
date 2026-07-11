@@ -348,17 +348,27 @@
         timestamp: String(Date.now())
       });
 
+      console.log("Request URL:", script.src);
       script.src = APPS_SCRIPT_URL + "?" + query.toString();
 
-      script.onerror = function() {
-        clearTimeout(timeoutId);
-        cleanupJsonp(callbackName, script);
-        setLoading(false);
-        showError(
-          "Unable to connect to the check-in server."
-        );
-        document.getElementById("nextButton").style.display = "block";
-      };
+    script.onerror = function() {
+      clearTimeout(timeoutId);
+
+      console.error(
+        "Unable to load Apps Script endpoint:", 
+          script.src
+  );
+
+      cleanupJsonp(callbackName, script); 
+      setLoading(false);
+
+      showError(
+        "Unable to connect to the check-in server. " +
+        "Check the deployment URL, public access, and API key."
+  );
+
+  document.getElementById("nextButton").style.display = "block";
+};
 
       document.body.appendChild(script);
     }
