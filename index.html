@@ -192,13 +192,20 @@
 
 <body>
   <header>
-    <h1>Ride4Kids Check-In</h1>
+    <h1>Ride4Kids Check</h1>
     <p>Scan the participant QR code</p>
   </header>
 
   <main>
     <section class="card">
       <div id="reader"></div>
+
+      <div class="rider-row">
+        <strong>Payment status:</strong>
+        <span id="paymentStatus">—</span>
+      </div>
+
+      <div id="paymentMessage"></div>
 
       <div id="paymentMessage"></div>
 
@@ -215,7 +222,7 @@
       >
 
       <button id="checkInButton" onclick="manualCheckIn()">
-        Check In Participant
+        Check Participant
       </button>
 
       <p class="help">
@@ -224,7 +231,7 @@
     </section>
 
     <div id="loading" class="loading">
-      Processing check-in...
+      Processing check-in and payment status...
     </div>
 
     <section id="result" class="result"></section>
@@ -263,7 +270,22 @@
         }
       });
 
+    function extractReference(qrText) {
+      const value = String(qrText || "").trim();
 
+      try {
+      const qrData = JSON.parse(value);
+
+      return String(
+        qrData.reference ||
+        qrData.r ||
+        ""
+        ).trim();
+      } catch (error) {
+        return value;
+      }
+    }
+    
     function startScanner() {
       scanner = new Html5QrcodeScanner(
         "reader",
@@ -285,21 +307,40 @@
     }
 
 
-    function onScanSuccess(decodedText) {
-      if (scanLocked) {
-        return;
-      }
+    // function onScanSuccess(decodedText) {
+      // if (scanLocked) {
+        // return;
+      // }
 
-      scanLocked = true;
+      // scanLocked = true;
 
-      if (scanner) {
-        scanner.clear().catch(function(error) {
-          console.warn(error);
-        });
-      }
-      submitCheckIn(decodedText);
+      // if (scanner) {
+        // scanner.clear().catch(function(error) {
+          // console.warn(error);
+        // });
+      // }
+      // submitCheckIn(decodedText);
+    // }
+
+      function handleScannedCode(decodedText) {
+        const reference = extractReference(decodedText);
+
+        if (!reference) {
+          showError("The QR code does not contain a rider reference.");
+          return;
+        }
+
+      google.script.run
+        .withSuccessHandler(showRiderResult)
+        .withFailureHandler(function(error) {
+          showError(
+            error.message ||
+            "The rider information could not be loaded."
+          );
+        })
+        .getRiderByReference(reference);
     }
-
+    
     function manualCheckIn() {
       const input = document.getElementById("reference");
       const value = input.value.trim();
@@ -456,7 +497,32 @@
       nextButton.style.display = "block";
     }
 
+    function showRiderResult(result) {
+      if (!result || !result.success) {
+        showError(
+          result && result.message
+            ? result.message
+            : "Rider not found."
+        );
 
+        return;
+      }
+
+      document.getElementById("riderName").textContent =
+        result.firstName + " " + result.lastName;
+
+      document.getElementById("riderReference").textContent =
+        result.reference;
+
+      document.getElementById("riderDistance").textContent =
+        result.distance || "—";
+
+      document.getElementById("paymentStatus").textContent =
+        result.paymentStatus || "Pending";
+
+      displayPaymentMessage(result.paymentStatus);
+    }
+    
     function showError(message) {
       const resultBox = document.getElementById("result");
 
@@ -468,6 +534,40 @@
       `;
     }
 
+    function displayPaymentMessage(paymentStatus) {
+      const status = String(
+        paymentStatus || "Pending"
+      )
+        .trim()
+        .toLowerCase();
+
+      const paymentMessage =
+        document.getElementById("paymentMessage");
+
+      if (status === "paid") {
+        paymentMessage.textContent =
+          "✓ Payment confirmed";
+
+        return;
+      }
+
+      if (status === "waived") {
+        paymentMessage.textContent =
+          "✓ Payment waived";
+
+        return;
+      }
+
+      if (status === "cancelled") {
+        paymentMessage.textContent =
+          "✕ Registration cancelled";
+
+        return;
+      }
+
+      paymentMessage.textContent =
+        "⚠ Payment has not been confirmed";
+    }
 
     function setLoading(isLoading) {
       document.getElementById("loading").style.display =
@@ -477,7 +577,23 @@
         isLoading;
     }
 
+    const paymentStatus = String(
+      result.paymentStatus || "Pending"
+    )
+      .trim()
+      .toLowerCase();
 
+    if (
+      paymentStatus !== "paid" &&
+      paymentStatus !== "waived"
+    ) {
+      showError(
+        "Check-in cannot be completed because payment has not been confirmed."
+      );
+
+      return;
+    }
+    
     function resetScanner() {
       scanLocked = false;
 
@@ -491,7 +607,6 @@
       document.getElementById("reader").innerHTML = "";
       startScanner();
     }
-
 
     function escapeHtml(value) {
       return String(value == null ? "" : value)
