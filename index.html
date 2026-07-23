@@ -200,6 +200,8 @@
     <section class="card">
       <div id="reader"></div>
 
+      <div id="paymentMessage"></div>
+
       <div class="divider">or enter manually</div>
 
       <label for="reference">Reference number</label>
@@ -414,6 +416,11 @@
 
             <strong>Check-in time:</strong>
             ${escapeHtml(result.checkInTime)}
+          </div>
+
+        <div class="rider-field">
+          <strong>Payment status:</strong>
+          <span id="paymentStatus">—</span>
           </div>
         `;
 
