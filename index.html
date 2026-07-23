@@ -297,29 +297,8 @@
           console.warn(error);
         });
       }
-
-    function handleScannedCode(decodedText) {
-    const reference = extractReference(decodedText);
-
-    if (!reference) {
-      showError("The QR code does not contain a rider reference.");
-      return;
-      }
-
-      google.script.run
-      .withSuccessHandler(showRiderResult)
-      .withFailureHandler(function(error) {
-      showError(
-        error.message ||
-        "The rider information could not be loaded."
-      );
-    })
-    .getRiderByReference(reference);
-}
-
       submitCheckIn(decodedText);
     }
-
 
     function manualCheckIn() {
       const input = document.getElementById("reference");
