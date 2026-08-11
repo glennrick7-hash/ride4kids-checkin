@@ -285,7 +285,7 @@
 
   <script>
     const APPS_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbxrP1rfheiB7GPc9o5QPWn_FJGrRQ7Y8UXpBwgFSMgLIBUrFMAR5WUAVTVW1WOWGh_Tqg/exec";
+      "https://script.google.com/macros/s/AKfycbyRmTmN0Nk6TgwnrAUhry8QREvBpIkJKOAucJcC6Qy59JupSVtAquSqUuN_04VSeCq-Cw/exec?page=checkin";
 
     const CHECKIN_KEY =
       "R4K-2026-KCPB-9x4Q7m2L8p6V";
@@ -315,26 +315,39 @@
      * 1. A JSON QR payload, or
      * 2. A plain R4K reference number.
      */
-    function extractReference(qrText) {
-      const value = String(qrText || "").trim();
+function extractReference(qrText) {
+  const value =
+    String(qrText || "").trim();
 
-      if (!value) {
-        return "";
-      }
+  if (!value) {
+    return "";
+  }
 
-      try {
-        const qrData = JSON.parse(value);
+  try {
+    const qrData =
+      JSON.parse(value);
 
-        return String(
-          qrData.reference ||
-          qrData.r ||
-          ""
-        ).trim();
+    const reference =
+      qrData.reference ||
+      qrData.ref ||
+      qrData.r ||
+      "";
 
-      } catch (error) {
-        return value;
-      }
-    }
+    return String(reference)
+      .trim()
+      .toUpperCase();
+
+  } catch (error) {
+    const match =
+      value
+        .toUpperCase()
+        .match(/R4K-\d{4,}/);
+
+    return match
+      ? match[0]
+      : "";
+  }
+}
 
 
     /**
