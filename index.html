@@ -554,16 +554,16 @@ function extractReference(qrText) {
         query.toString();
 
 
- script.onerror = function() {
-  clearTimeout(timeoutId);
+      script.onerror = function() {
+        clearTimeout(timeoutId);
 
-  const failedUrl =
-    script.src;
+        const failedUrl =
+          script.src;
 
-  cleanupJsonp(
-    callbackName,
-    script
-  );
+        cleanupJsonp(
+          callbackName,
+          script
+   );
 
   setLoading(false);
 
