@@ -10,7 +10,6 @@
 
   <title>Ride4Kids Check-In</title>
 
-  <!-- Pinned version for better stability -->
   <script
     src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js">
   </script>
@@ -219,667 +218,1021 @@
 </head>
 
 <body>
-  <header>
-    <h1>Ride4Kids Check-In</h1>
-    <p>Scan the participant QR code</p>
-  </header>
 
-  <main>
-    <section class="card">
+<header>
+  <h1>Ride4Kids Check-In</h1>
+  <p>Scan the participant QR code</p>
+</header>
 
-      <div id="reader"></div>
+<main>
 
-      <p id="cameraMessage" class="camera-message">
-        Allow camera access when requested.
-      </p>
+  <section class="card">
 
-      <div class="divider">
-        or enter manually
-      </div>
+    <div id="reader"></div>
 
-      <label for="reference">
-        Reference number
-      </label>
+    <p
+      id="cameraMessage"
+      class="camera-message"
+    >
+      Allow camera access when requested.
+    </p>
 
-      <input
-        id="reference"
-        type="text"
-        placeholder="R4K-0001"
-        autocomplete="off"
-        autocapitalize="characters"
-      >
-
-      <button
-        id="checkInButton"
-        type="button"
-        onclick="manualCheckIn()"
-      >
-        Check Participant
-      </button>
-
-      <p class="help">
-        Open this page directly in Chrome or Safari. Camera access may not
-        work when the page is opened inside another app or an embedded browser.
-      </p>
-    </section>
-
-    <div id="loading" class="loading">
-      Processing participant information...
+    <div class="divider">
+      or enter manually
     </div>
 
-    <section
-      id="result"
-      class="result">
-    </section>
+    <label for="reference">
+      Reference number
+    </label>
+
+    <input
+      id="reference"
+      type="text"
+      placeholder="R4K-0001"
+      autocomplete="off"
+      autocapitalize="characters"
+    >
 
     <button
-      id="nextButton"
+      id="checkInButton"
       type="button"
-      class="secondary"
-      onclick="resetScanner()"
-      style="display:none;"
+      onclick="manualCheckIn()"
     >
-      Scan Next Participant
+      Find Participant
     </button>
-  </main>
 
-  <script>
-    const APPS_SCRIPT_URL =
-      "https://script.google.com/macros/s/AKfycbyRmTmN0Nk6TgwnrAUhry8QREvBpIkJKOAucJcC6Qy59JupSVtAquSqUuN_04VSeCq-Cw/exec";
+    <p class="help">
+      Open this page directly in Chrome or Safari.
+      Camera access may not work inside another app
+      or an embedded browser.
+    </p>
 
-    const CHECKIN_KEY =
-      "R4K-2026-KCPB-9x4Q7m2L8p6V";
-
-    let scanner = null;
-    let scanLocked = false;
-    let callbackCounter = 0;
+  </section>
 
 
-    window.addEventListener("load", function() {
+  <div
+    id="loading"
+    class="loading"
+  >
+    Looking up participant...
+  </div>
+
+
+  <section
+    id="result"
+    class="result"
+  >
+  </section>
+
+
+  <button
+    id="nextButton"
+    type="button"
+    class="secondary"
+    onclick="resetScanner()"
+    style="display:none;"
+  >
+    Scan Next Participant
+  </button>
+
+</main>
+
+
+<script>
+
+  /**************************************************
+   * CONFIGURATION
+   **************************************************/
+
+  const APPS_SCRIPT_URL =
+    "https://script.google.com/macros/s/AKfycbyRmTmN0Nk6TgwnrAUhry8QREvBpIkJKOAucJcC6Qy59JupSVtAquSqUuN_04VSeCq-Cw/exec";
+
+  const CHECKIN_KEY =
+    "R4K-2026-KCPB-9x4Q7m2L8p6V";
+
+  /*
+   * SAFE TEST MODE
+   *
+   * For now we only LOOK UP riders.
+   * Nobody is marked Checked In.
+   */
+  const API_ACTION =
+    "lookup";
+
+
+  let scanner = null;
+  let scanLocked = false;
+  let callbackCounter = 0;
+
+
+  /**************************************************
+   * STARTUP
+   **************************************************/
+
+  window.addEventListener(
+    "load",
+    function() {
       startScanner();
-    });
+    }
+  );
 
 
-    document
-      .getElementById("reference")
-      .addEventListener("keydown", function(event) {
-        if (event.key === "Enter") {
+  document
+    .getElementById(
+      "reference"
+    )
+    .addEventListener(
+      "keydown",
+      function(event) {
+
+        if (
+          event.key ===
+          "Enter"
+        ) {
           event.preventDefault();
+
           manualCheckIn();
         }
-      });
+      }
+    );
 
 
-    /**
-     * Extracts the rider reference from either:
-     * 1. A JSON QR payload, or
-     * 2. A plain R4K reference number.
+  /**************************************************
+   * EXTRACT R4K REFERENCE
+   **************************************************/
+
+  function extractReference(
+    qrText
+  ) {
+
+    const value =
+      String(
+        qrText || ""
+      ).trim();
+
+    if (!value) {
+      return "";
+    }
+
+
+    /*
+     * JSON QR payload.
      */
-function extractReference(qrText) {
-  const value =
-    String(qrText || "").trim();
+    try {
 
-  if (!value) {
-    return "";
-  }
+      const qrData =
+        JSON.parse(
+          value
+        );
 
-  try {
-    const qrData =
-      JSON.parse(value);
+      const reference =
+        qrData.reference ||
+        qrData.ref ||
+        qrData.r ||
+        "";
 
-    const reference =
-      qrData.reference ||
-      qrData.ref ||
-      qrData.r ||
-      "";
+      if (reference) {
 
-    return String(reference)
-      .trim()
-      .toUpperCase();
+        const normalized =
+          String(
+            reference
+          )
+            .trim()
+            .toUpperCase();
 
-  } catch (error) {
+        if (
+          /^R4K-\d{4,}$/.test(
+            normalized
+          )
+        ) {
+          return normalized;
+        }
+      }
+
+    } catch (error) {
+      // Not JSON.
+    }
+
+
+    /*
+     * Plain text QR / manual reference.
+     */
     const match =
       value
         .toUpperCase()
-        .match(/R4K-\d{4,}/);
+        .match(
+          /R4K-\d{4,}/
+        );
 
     return match
       ? match[0]
       : "";
   }
-}
 
 
-    /**
-     * Starts the QR scanner.
-     */
-    function startScanner() {
-      const reader = document.getElementById("reader");
+  /**************************************************
+   * CAMERA
+   **************************************************/
 
-      reader.innerHTML = "";
+  function startScanner() {
 
-      if (typeof Html5QrcodeScanner === "undefined") {
-        showError(
-          "The QR scanner library could not be loaded. Check the internet connection."
-        );
+    const reader =
+      document.getElementById(
+        "reader"
+      );
 
-        return;
-      }
+    reader.innerHTML = "";
 
-      scanLocked = false;
 
-      scanner = new Html5QrcodeScanner(
+    if (
+      typeof Html5QrcodeScanner ===
+      "undefined"
+    ) {
+
+      showError(
+        "The QR scanner library could not be loaded."
+      );
+
+      return;
+    }
+
+
+    scanLocked = false;
+
+
+    scanner =
+      new Html5QrcodeScanner(
         "reader",
         {
           fps: 10,
 
-          qrbox: function(viewfinderWidth, viewfinderHeight) {
-            const minimumDimension = Math.min(
+          qrbox:
+            function(
               viewfinderWidth,
               viewfinderHeight
-            );
+            ) {
 
-            const boxSize = Math.floor(
-              minimumDimension * 0.72
-            );
+              const minimumDimension =
+                Math.min(
+                  viewfinderWidth,
+                  viewfinderHeight
+                );
 
-            return {
-              width: boxSize,
-              height: boxSize
-            };
-          },
+              const boxSize =
+                Math.floor(
+                  minimumDimension *
+                  0.72
+                );
+
+              return {
+                width: boxSize,
+                height: boxSize
+              };
+            },
 
           aspectRatio: 1,
-          rememberLastUsedCamera: true,
+
+          rememberLastUsedCamera:
+            true,
 
           supportedScanTypes: [
-            Html5QrcodeScanType.SCAN_TYPE_CAMERA
+            Html5QrcodeScanType
+              .SCAN_TYPE_CAMERA
           ]
         },
         false
       );
 
-      scanner.render(
-        onScanSuccess,
-        onScanFailure
+
+    scanner.render(
+      onScanSuccess,
+      onScanFailure
+    );
+  }
+
+
+  function onScanSuccess(
+    decodedText
+  ) {
+
+    if (scanLocked) {
+      return;
+    }
+
+
+    const reference =
+      extractReference(
+        decodedText
       );
+
+
+    if (!reference) {
+
+      showError(
+        "The QR code does not contain a valid Ride4Kids reference."
+      );
+
+      return;
     }
 
 
-    /**
-     * Runs after a QR code is successfully scanned.
+    scanLocked = true;
+
+
+    document
+      .getElementById(
+        "reference"
+      )
+      .value =
+        reference;
+
+
+    stopScanner();
+
+    lookupRider(
+      reference
+    );
+  }
+
+
+  function onScanFailure(
+    errorMessage
+  ) {
+    /*
+     * Normal while camera searches
+     * for a QR code.
      */
-    function onScanSuccess(decodedText) {
-      if (scanLocked) {
-        return;
-      }
+  }
 
-      const reference = extractReference(decodedText);
 
-      if (!reference) {
-        showError(
-          "The QR code does not contain a Ride4Kids reference number."
-        );
+  function stopScanner() {
 
-        return;
-      }
-
-      scanLocked = true;
-
-      document.getElementById("reference").value =
-        reference.toUpperCase();
-
-      if (scanner) {
-        scanner
-          .clear()
-          .catch(function(error) {
-            console.warn(
-              "Scanner could not be cleared:",
-              error
-            );
-          });
-      }
-
-      submitCheckIn(reference);
+    if (!scanner) {
+      return;
     }
 
 
-    /**
-     * Scanner failures normally occur while the camera is searching
-     * for a QR code, so they do not need to be shown to the user.
-     */
-    function onScanFailure(errorMessage) {
-      // Intentionally left blank.
+    scanner
+      .clear()
+      .catch(
+        function(error) {
+
+          console.warn(
+            "Scanner cleanup warning:",
+            error
+          );
+        }
+      );
+  }
+
+
+  /**************************************************
+   * MANUAL LOOKUP
+   **************************************************/
+
+  function manualCheckIn() {
+
+    const input =
+      document.getElementById(
+        "reference"
+      );
+
+
+    const reference =
+      extractReference(
+        input.value
+      );
+
+
+    if (!reference) {
+
+      showError(
+        "Please enter a valid Ride4Kids reference number."
+      );
+
+      input.focus();
+
+      return;
     }
 
 
-    /**
-     * Manual reference-number submission.
+    scanLocked = true;
+
+    stopScanner();
+
+    lookupRider(
+      reference
+    );
+  }
+
+
+  /**************************************************
+   * APPS SCRIPT JSONP API
+   **************************************************/
+
+  function lookupRider(
+    reference
+  ) {
+
+    setLoading(
+      true
+    );
+
+
+    callbackCounter++;
+
+
+    const callbackName =
+      "ride4kidsCallback_" +
+      Date.now() +
+      "_" +
+      callbackCounter;
+
+
+    const script =
+      document.createElement(
+        "script"
+      );
+
+
+    /*
+     * Timeout protection.
      */
-    function manualCheckIn() {
-      const input =
-        document.getElementById("reference");
+    const timeoutId =
+      setTimeout(
+        function() {
 
-      const reference =
-        extractReference(input.value);
-
-      if (!reference) {
-        showError(
-          "Please enter a Ride4Kids reference number."
-        );
-
-        input.focus();
-        return;
-      }
-
-      scanLocked = true;
-
-      if (scanner) {
-        scanner
-          .clear()
-          .catch(function(error) {
-            console.warn(
-              "Scanner could not be cleared:",
-              error
-            );
-          });
-      }
-
-      submitCheckIn(reference);
-    }
-
-
-    /**
-     * Sends a JSONP request to the Apps Script web app.
-     */
-    function submitCheckIn(reference) {
-      setLoading(true);
-
-      callbackCounter++;
-
-      const callbackName =
-        "ride4kidsCallback_" +
-        Date.now() +
-        "_" +
-        callbackCounter;
-
-      const script =
-        document.createElement("script");
-
-      const timeoutId =
-        setTimeout(function() {
           cleanupJsonp(
             callbackName,
             script
           );
 
-          setLoading(false);
-
-          showError(
-            "The check-in server did not respond. Please try again."
+          setLoading(
+            false
           );
 
-          document
-            .getElementById("nextButton")
-            .style.display = "block";
+          showError(
+            "The Ride4Kids server did not respond. Please try again."
+          );
 
-        }, 15000);
+        },
+        15000
+      );
 
 
-      window[callbackName] = function(result) {
-        clearTimeout(timeoutId);
+    /*
+     * Apps Script will execute this callback.
+     */
+    window[
+      callbackName
+    ] =
+      function(result) {
+
+        clearTimeout(
+          timeoutId
+        );
 
         cleanupJsonp(
           callbackName,
           script
         );
 
-        setLoading(false);
-        displayResult(result);
+        setLoading(
+          false
+        );
+
+        displayResult(
+          result
+        );
       };
 
 
-      const query = new URLSearchParams({
-        action: "lookup",
-        key: CHECKIN_KEY,
-        value: reference,
-        callback: callbackName,
-        timestamp: String(Date.now())
+    /*
+     * Build API query.
+     */
+    const query =
+      new URLSearchParams({
+        action:
+          API_ACTION,
+
+        key:
+          CHECKIN_KEY,
+
+        value:
+          reference,
+
+        callback:
+          callbackName,
+
+        timestamp:
+          String(
+            Date.now()
+          )
       });
 
 
-      script.src =
-        APPS_SCRIPT_URL +
-        "?" +
-        query.toString();
+    script.src =
+      APPS_SCRIPT_URL +
+      "?" +
+      query.toString();
 
 
-      
-    /**
-     * Removes the temporary JSONP callback.
+    /*
+     * Handle request failure.
      */
-    function cleanupJsonp(
-      callbackName,
-      script
-    ) {
-      try {
-        delete window[callbackName];
-      } catch (error) {
-        window[callbackName] = undefined;
-      }
+    script.onerror =
+      function() {
 
-      if (
-        script &&
-        script.parentNode
-      ) {
-        script.parentNode.removeChild(script);
-      }
-    }
-
-
-    /**
-     * Displays rider information, check-in information,
-     * and the current payment status.
-     */
-    function displayResult(result) {
-      const resultBox =
-        document.getElementById("result");
-
-      const nextButton =
-        document.getElementById("nextButton");
-
-      if (!result) {
-        showError(
-          "The server returned an empty response."
+        clearTimeout(
+          timeoutId
         );
 
-        nextButton.style.display = "block";
-        return;
-      }
-
-      const paymentStatus =
-        String(
-          result.paymentStatus ||
-          "Pending"
-        ).trim();
-
-      const paymentClass =
-        getPaymentClass(paymentStatus);
-
-      const paymentMessage =
-        getPaymentMessage(paymentStatus);
+        const failedUrl =
+          script.src;
 
 
-      if (result.success) {
-        resultBox.className =
-          "result success";
+        cleanupJsonp(
+          callbackName,
+          script
+        );
 
-        resultBox.innerHTML = `
-          <div class="icon">✓</div>
+        setLoading(
+          false
+        );
 
-          <h2>Checked In</h2>
 
-          <div class="participant-name">
-            ${escapeHtml(result.firstName)}
-            ${escapeHtml(result.lastName)}
-          </div>
+        console.error(
+          "Ride4Kids API request failed:",
+          failedUrl
+        );
 
-          <div class="details">
-            <strong>Reference:</strong>
-            ${escapeHtml(result.reference)}
-            <br>
 
-            <strong>Distance:</strong>
-            ${escapeHtml(result.distance || "-")}
-            <br>
+        showError(
+          "Unable to connect to the Ride4Kids server."
+        );
+      };
 
-            <strong>Team:</strong>
-            ${escapeHtml(
-              result.team ||
-              "Individual rider"
-            )}
-            <br>
 
-            <strong>Jersey size:</strong>
-            ${escapeHtml(
-              result.jerseySize ||
-              "-"
-            )}
-            <br>
+    console.log(
+      "Ride4Kids API request:",
+      script.src
+    );
 
-            <strong>Check-in time:</strong>
-            ${escapeHtml(
-              result.checkInTime ||
-              "-"
-            )}
-            <br>
 
-            <strong>Payment status:</strong>
-            <span class="${paymentClass}">
-              ${escapeHtml(paymentStatus)}
-            </span>
-            <br>
+    /*
+     * CRITICAL:
+     * This actually sends the JSONP request.
+     */
+    document.body.appendChild(
+      script
+    );
+  }
 
-            <strong>Payment message:</strong>
-            ${escapeHtml(paymentMessage)}
-          </div>
-        `;
 
-      } else if (
-        result.type ===
-        "already_checked_in"
-      ) {
-        resultBox.className =
-          "result warning";
+  function cleanupJsonp(
+    callbackName,
+    script
+  ) {
 
-        resultBox.innerHTML = `
-          <div class="icon">!</div>
+    try {
 
-          <h2>Already Checked In</h2>
+      delete window[
+        callbackName
+      ];
 
-          <div class="participant-name">
-            ${escapeHtml(result.firstName)}
-            ${escapeHtml(result.lastName)}
-          </div>
+    } catch (error) {
 
-          <div class="details">
-            <strong>Reference:</strong>
-            ${escapeHtml(result.reference)}
-            <br>
-
-            <strong>Previous check-in:</strong>
-            ${escapeHtml(
-              result.checkInTime ||
-              "Time not available"
-            )}
-            <br>
-
-            <strong>Payment status:</strong>
-            <span class="${paymentClass}">
-              ${escapeHtml(paymentStatus)}
-            </span>
-            <br>
-
-            <strong>Payment message:</strong>
-            ${escapeHtml(paymentMessage)}
-          </div>
-        `;
-
-      } else {
-        resultBox.className =
-          "result error";
-
-        resultBox.innerHTML = `
-          <div class="icon">×</div>
-
-          <h2>Check-In Failed</h2>
-
-          <p>
-            ${escapeHtml(
-              result.message ||
-              "Unknown error."
-            )}
-          </p>
-
-          ${
-            result.paymentStatus
-              ? `
-                <div class="details">
-                  <strong>Payment status:</strong>
-                  <span class="${paymentClass}">
-                    ${escapeHtml(paymentStatus)}
-                  </span>
-                </div>
-              `
-              : ""
-          }
-        `;
-      }
-
-      nextButton.style.display = "block";
+      window[
+        callbackName
+      ] =
+        undefined;
     }
 
 
-    function getPaymentClass(paymentStatus) {
-      const status =
-        String(paymentStatus || "")
-          .trim()
-          .toLowerCase();
+    if (
+      script &&
+      script.parentNode
+    ) {
 
-      if (
-        status === "paid" ||
-        status === "waived"
-      ) {
-        return "payment-paid";
-      }
+      script
+        .parentNode
+        .removeChild(
+          script
+        );
+    }
+  }
 
-      if (status === "cancelled") {
-        return "payment-cancelled";
-      }
 
-      return "payment-pending";
+  /**************************************************
+   * DISPLAY RESULT
+   **************************************************/
+
+  function displayResult(
+    result
+  ) {
+
+    const resultBox =
+      document.getElementById(
+        "result"
+      );
+
+    const nextButton =
+      document.getElementById(
+        "nextButton"
+      );
+
+
+    if (!result) {
+
+      showError(
+        "The server returned an empty response."
+      );
+
+      return;
     }
 
 
-    function getPaymentMessage(paymentStatus) {
-      const status =
-        String(
-          paymentStatus ||
-          "Pending"
-        )
-          .trim()
-          .toLowerCase();
-
-      if (status === "paid") {
-        return "Payment confirmed";
-      }
-
-      if (status === "waived") {
-        return "Payment waived";
-      }
-
-      if (status === "cancelled") {
-        return "Registration cancelled";
-      }
-
-      return "Payment has not been confirmed";
-    }
+    const paymentStatus =
+      String(
+        result.paymentStatus ||
+        "Pending"
+      ).trim();
 
 
-    function showError(message) {
-      const resultBox =
-        document.getElementById("result");
+    const paymentClass =
+      getPaymentClass(
+        paymentStatus
+      );
+
+
+    const paymentMessage =
+      getPaymentMessage(
+        paymentStatus
+      );
+
+
+    /*
+     * Successful lookup.
+     */
+    if (
+      result.success &&
+      result.type ===
+      "lookup"
+    ) {
 
       resultBox.className =
-        "result error";
+        "result success";
+
 
       resultBox.innerHTML = `
-        <div class="icon">×</div>
 
-        <h2>Unable to Continue</h2>
+        <div class="icon">
+          ✓
+        </div>
 
-        <p>
-          ${escapeHtml(message)}
-        </p>
+        <h2>
+          Participant Found
+        </h2>
+
+        <div class="participant-name">
+          ${escapeHtml(
+            result.firstName
+          )}
+          ${escapeHtml(
+            result.lastName
+          )}
+        </div>
+
+        <div class="details">
+
+          <strong>Reference:</strong>
+          ${escapeHtml(
+            result.reference
+          )}
+          <br>
+
+          <strong>Distance:</strong>
+          ${escapeHtml(
+            result.distance ||
+            "-"
+          )}
+          <br>
+
+          <strong>Team:</strong>
+          ${escapeHtml(
+            result.team ||
+            "Individual rider"
+          )}
+          <br>
+
+          <strong>Jersey size:</strong>
+          ${escapeHtml(
+            result.jerseySize ||
+            "-"
+          )}
+          <br>
+
+          <strong>Check-In Status:</strong>
+          ${escapeHtml(
+            result.checkInStatus ||
+            "Not Checked In"
+          )}
+          <br>
+
+          <strong>Payment Status:</strong>
+
+          <span class="${paymentClass}">
+            ${escapeHtml(
+              paymentStatus
+            )}
+          </span>
+
+          <br>
+
+          <strong>Payment:</strong>
+          ${escapeHtml(
+            paymentMessage
+          )}
+
+        </div>
       `;
 
-      document
-        .getElementById("nextButton")
-        .style.display = "block";
+
+      nextButton.style.display =
+        "block";
+
+      return;
     }
 
 
-    function setLoading(isLoading) {
-      document
-        .getElementById("loading")
-        .style.display =
-          isLoading
-            ? "block"
-            : "none";
-
-      document
-        .getElementById("checkInButton")
-        .disabled =
-          isLoading;
-    }
-
-
-    /**
-     * Clears the previous result and restarts the camera.
+    /*
+     * API returned an error.
      */
-    function resetScanner() {
-      scanLocked = false;
-
-      document
-        .getElementById("result")
-        .className = "result";
-
-      document
-        .getElementById("result")
-        .innerHTML = "";
-
-      document
-        .getElementById("nextButton")
-        .style.display = "none";
-
-      document
-        .getElementById("reference")
-        .value = "";
-
-      setLoading(false);
-
-      if (scanner) {
-        scanner
-          .clear()
-          .catch(function(error) {
-            console.warn(
-              "Scanner cleanup warning:",
-              error
-            );
-          })
-          .finally(function() {
-            scanner = null;
-            startScanner();
-          });
-
-      } else {
-        startScanner();
-      }
-    }
+    resultBox.className =
+      "result error";
 
 
-    function escapeHtml(value) {
-      return String(
-        value == null
-          ? ""
-          : value
+    resultBox.innerHTML = `
+
+      <div class="icon">
+        ×
+      </div>
+
+      <h2>
+        Participant Not Found
+      </h2>
+
+      <p>
+        ${escapeHtml(
+          result.message ||
+          "Unable to retrieve participant."
+        )}
+      </p>
+    `;
+
+
+    nextButton.style.display =
+      "block";
+  }
+
+
+  /**************************************************
+   * PAYMENT DISPLAY
+   **************************************************/
+
+  function getPaymentClass(
+    paymentStatus
+  ) {
+
+    const status =
+      String(
+        paymentStatus || ""
       )
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      status === "paid" ||
+      status === "waived"
+    ) {
+
+      return "payment-paid";
     }
-  </script>
+
+
+    if (
+      status === "cancelled"
+    ) {
+
+      return "payment-cancelled";
+    }
+
+
+    return "payment-pending";
+  }
+
+
+  function getPaymentMessage(
+    paymentStatus
+  ) {
+
+    const status =
+      String(
+        paymentStatus ||
+        "Pending"
+      )
+        .trim()
+        .toLowerCase();
+
+
+    if (
+      status === "paid"
+    ) {
+
+      return "Payment confirmed";
+    }
+
+
+    if (
+      status === "waived"
+    ) {
+
+      return "Payment waived";
+    }
+
+
+    if (
+      status === "cancelled"
+    ) {
+
+      return "Registration cancelled";
+    }
+
+
+    return "Payment has not been confirmed";
+  }
+
+
+  /**************************************************
+   * UI HELPERS
+   **************************************************/
+
+  function showError(
+    message
+  ) {
+
+    const resultBox =
+      document.getElementById(
+        "result"
+      );
+
+
+    resultBox.className =
+      "result error";
+
+
+    resultBox.innerHTML = `
+
+      <div class="icon">
+        ×
+      </div>
+
+      <h2>
+        Unable to Continue
+      </h2>
+
+      <p>
+        ${escapeHtml(
+          message
+        )}
+      </p>
+    `;
+
+
+    document
+      .getElementById(
+        "nextButton"
+      )
+      .style.display =
+        "block";
+  }
+
+
+  function setLoading(
+    isLoading
+  ) {
+
+    document
+      .getElementById(
+        "loading"
+      )
+      .style.display =
+        isLoading
+          ? "block"
+          : "none";
+
+
+    document
+      .getElementById(
+        "checkInButton"
+      )
+      .disabled =
+        isLoading;
+  }
+
+
+  /**************************************************
+   * RESET
+   **************************************************/
+
+  function resetScanner() {
+
+    scanLocked =
+      false;
+
+
+    document
+      .getElementById(
+        "result"
+      )
+      .className =
+        "result";
+
+
+    document
+      .getElementById(
+        "result"
+      )
+      .innerHTML =
+        "";
+
+
+    document
+      .getElementById(
+        "nextButton"
+      )
+      .style.display =
+        "none";
+
+
+    document
+      .getElementById(
+        "reference"
+      )
+      .value =
+        "";
+
+
+    setLoading(
+      false
+    );
+
+
+    scanner =
+      null;
+
+
+    startScanner();
+  }
+
+
+  /**************************************************
+   * HTML ESCAPE
+   **************************************************/
+
+  function escapeHtml(
+    value
+  ) {
+
+    return String(
+      value == null
+        ? ""
+        : value
+    )
+      .replace(
+        /&/g,
+        "&amp;"
+      )
+      .replace(
+        /</g,
+        "&lt;"
+      )
+      .replace(
+        />/g,
+        "&gt;"
+      )
+      .replace(
+        /"/g,
+        "&quot;"
+      )
+      .replace(
+        /'/g,
+        "&#039;"
+      );
+  }
+
+</script>
+
 </body>
 </html>
