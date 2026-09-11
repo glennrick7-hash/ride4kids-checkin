@@ -788,6 +788,148 @@
     );
   }
 
+  /**************************************************
+ * COMPLETE RIDER CHECK-IN
+ **************************************************/
+
+function completeCheckIn(
+  reference
+) {
+
+  if (!reference) {
+    return;
+  }
+
+
+  setLoading(
+    true
+  );
+
+
+  callbackCounter++;
+
+
+  const callbackName =
+    "ride4kidsCheckIn_" +
+    Date.now() +
+    "_" +
+    callbackCounter;
+
+
+  const script =
+    document.createElement(
+      "script"
+    );
+
+
+  const timeoutId =
+    setTimeout(
+      function() {
+
+        cleanupJsonp(
+          callbackName,
+          script
+        );
+
+
+        setLoading(
+          false
+        );
+
+
+        showError(
+          "The Ride4Kids server did not respond. Please try again."
+        );
+
+      },
+      15000
+    );
+
+
+  window[
+    callbackName
+  ] =
+    function(result) {
+
+      clearTimeout(
+        timeoutId
+      );
+
+
+      cleanupJsonp(
+        callbackName,
+        script
+      );
+
+
+      setLoading(
+        false
+      );
+
+
+      displayResult(
+        result
+      );
+    };
+
+
+  const query =
+    new URLSearchParams({
+
+      action:
+        "checkin",
+
+      key:
+        CHECKIN_KEY,
+
+      value:
+        reference,
+
+      callback:
+        callbackName,
+
+      timestamp:
+        String(
+          Date.now()
+        )
+    });
+
+
+  script.src =
+    APPS_SCRIPT_URL +
+    "?" +
+    query.toString();
+
+
+  script.onerror =
+    function() {
+
+      clearTimeout(
+        timeoutId
+      );
+
+
+      cleanupJsonp(
+        callbackName,
+        script
+      );
+
+
+      setLoading(
+        false
+      );
+
+
+      showError(
+        "Unable to connect to the Ride4Kids server."
+      );
+    };
+
+
+  document.body.appendChild(
+    script
+  );
+}
 
   function cleanupJsonp(
     callbackName,
