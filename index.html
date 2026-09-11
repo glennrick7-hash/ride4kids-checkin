@@ -317,7 +317,7 @@
    * Nobody is marked Checked In.
    */
   const API_ACTION =
-    "checkin";
+    "lookup";
 
 
   let scanner = null;
@@ -828,164 +828,505 @@
    **************************************************/
 
   function displayResult(
-    result
+  result
+) {
+
+  const resultBox =
+    document.getElementById(
+      "result"
+    );
+
+
+  const nextButton =
+    document.getElementById(
+      "nextButton"
+    );
+
+
+  if (!result) {
+
+    showError(
+      "The server returned an empty response."
+    );
+
+    return;
+  }
+
+
+  const paymentStatus =
+    String(
+      result.paymentStatus ||
+      "Pending"
+    ).trim();
+
+
+  const normalizedPaymentStatus =
+    paymentStatus
+      .toLowerCase();
+
+
+  const paymentClass =
+    getPaymentClass(
+      paymentStatus
+    );
+
+
+  /*
+   * RIDER LOOKUP
+   */
+  if (
+    result.success &&
+    result.type ===
+      "lookup"
   ) {
 
-    const resultBox =
-      document.getElementById(
-        "result"
-      );
-
-    const nextButton =
-      document.getElementById(
-        "nextButton"
-      );
+    const paymentApproved =
+      normalizedPaymentStatus ===
+        "paid" ||
+      normalizedPaymentStatus ===
+        "waived";
 
 
-    if (!result) {
-
-      showError(
-        "The server returned an empty response."
-      );
-
-      return;
-    }
-
-
-    const paymentStatus =
+    const alreadyCheckedIn =
       String(
-        result.paymentStatus ||
-        "Pending"
-      ).trim();
-
-
-    const paymentClass =
-      getPaymentClass(
-        paymentStatus
-      );
-
-
-    const paymentMessage =
-      getPaymentMessage(
-        paymentStatus
-      );
+        result.checkInStatus || ""
+      )
+        .trim()
+        .toLowerCase() ===
+      "checked in";
 
 
     /*
-     * Successful lookup.
+     * Determine result color.
      */
-    if (
-      result.success &&
-      result.type ===
-      "lookup"
+    if (alreadyCheckedIn) {
+
+      resultBox.className =
+        "result success";
+
+    } else if (
+      paymentApproved
     ) {
 
       resultBox.className =
         "result success";
 
+    } else {
 
-      resultBox.innerHTML = `
-
-        <div class="icon">
-          ✓
-        </div>
-
-        <h2>
-          Participant Found
-        </h2>
-
-        <div class="participant-name">
-          ${escapeHtml(
-            result.firstName
-          )}
-          ${escapeHtml(
-            result.lastName
-          )}
-        </div>
-
-        <div class="details">
-
-          <strong>Reference:</strong>
-          ${escapeHtml(
-            result.reference
-          )}
-          <br>
-
-          <strong>Distance:</strong>
-          ${escapeHtml(
-            result.distance ||
-            "-"
-          )}
-          <br>
-
-          <strong>Team:</strong>
-          ${escapeHtml(
-            result.team ||
-            "Individual rider"
-          )}
-          <br>
-
-          <strong>Jersey size:</strong>
-          ${escapeHtml(
-            result.jerseySize ||
-            "-"
-          )}
-          <br>
-
-          <strong>Check-In Status:</strong>
-          ${escapeHtml(
-            result.checkInStatus ||
-            "Not Checked In"
-          )}
-          <br>
-
-          <strong>Payment Status:</strong>
-
-          <span class="${paymentClass}">
-            ${escapeHtml(
-              paymentStatus
-            )}
-          </span>
-
-          <br>
-
-          <strong>Payment:</strong>
-          ${escapeHtml(
-            paymentMessage
-          )}
-
-        </div>
-      `;
-
-
-      nextButton.style.display =
-        "block";
-
-      return;
+      resultBox.className =
+        "result warning";
     }
 
 
     /*
-     * API returned an error.
+     * Determine heading.
      */
-    resultBox.className =
-      "result error";
+    let heading = "";
+
+    let icon = "";
+
+    let actionSection = "";
+
+
+    if (alreadyCheckedIn) {
+
+      icon =
+        "✓";
+
+      heading =
+        "Already Checked In";
+
+
+      actionSection = `
+        <div style="
+          margin-top:18px;
+          padding:14px;
+          background:#eaf8f0;
+          border-radius:10px;
+          font-weight:bold;
+        ">
+          This rider has already been checked in.
+        </div>
+      `;
+
+    } else if (
+      paymentApproved
+    ) {
+
+      icon =
+        "✓";
+
+      heading =
+        "Rider Ready";
+
+
+      actionSection = `
+
+        <div style="
+          margin-top:18px;
+          padding:14px;
+          background:#eaf8f0;
+          border-radius:10px;
+        ">
+
+          <strong>
+            Payment verified.
+          </strong>
+
+          <br>
+
+          Confirm the rider information
+          and continue with check-in.
+
+        </div>
+
+
+        <button
+          type="button"
+          onclick="completeCheckIn(
+            '${escapeHtml(
+              result.reference
+            )}'
+          )"
+          style="
+            margin-top:18px;
+          "
+        >
+          CHECK IN RIDER
+        </button>
+      `;
+
+    } else {
+
+      icon =
+        "!";
+
+      heading =
+        "Payment Required";
+
+
+      actionSection = `
+
+        <div style="
+          margin-top:18px;
+          padding:14px;
+          background:#fff5d8;
+          border-radius:10px;
+          font-weight:bold;
+        ">
+
+          ${
+            normalizedPaymentStatus ===
+              "cancelled"
+              ? "This registration is cancelled."
+              : "Payment is still pending."
+          }
+
+          <br><br>
+
+          Rider cannot be checked in.
+
+        </div>
+      `;
+    }
 
 
     resultBox.innerHTML = `
 
       <div class="icon">
-        ×
+        ${icon}
       </div>
 
+
       <h2>
-        Participant Not Found
+        ${heading}
       </h2>
+
+
+      <div class="participant-name">
+
+        ${escapeHtml(
+          result.firstName
+        )}
+
+        ${escapeHtml(
+          result.lastName
+        )}
+
+      </div>
+
+
+      <div class="details">
+
+        <strong>
+          Reference:
+        </strong>
+
+        ${escapeHtml(
+          result.reference
+        )}
+
+        <br>
+
+
+        <strong>
+          Distance:
+        </strong>
+
+        ${escapeHtml(
+          result.distance ||
+          "-"
+        )}
+
+        <br>
+
+
+        <strong>
+          Jersey Size:
+        </strong>
+
+        ${escapeHtml(
+          result.jerseySize ||
+          "No Jersey"
+        )}
+
+        <br>
+
+
+        <strong>
+          Payment Status:
+        </strong>
+
+        <span class="${paymentClass}">
+
+          ${escapeHtml(
+            paymentStatus
+          )}
+
+        </span>
+
+        <br>
+
+
+        <strong>
+          Check-In Status:
+        </strong>
+
+        ${escapeHtml(
+          result.checkInStatus ||
+          "Not Checked In"
+        )}
+
+      </div>
+
+
+      ${actionSection}
+    `;
+
+
+    nextButton.style.display =
+      "block";
+
+
+    return;
+  }
+
+
+  /*
+   * SUCCESSFUL CHECK-IN
+   */
+  if (
+    result.success &&
+    result.type ===
+      "checked_in"
+  ) {
+
+    resultBox.className =
+      "result success";
+
+
+    resultBox.innerHTML = `
+
+      <div class="icon">
+        ✓
+      </div>
+
+
+      <h2>
+        Checked In
+      </h2>
+
+
+      <div class="participant-name">
+
+        ${escapeHtml(
+          result.firstName
+        )}
+
+        ${escapeHtml(
+          result.lastName
+        )}
+
+      </div>
+
+
+      <div class="details">
+
+        <strong>
+          Reference:
+        </strong>
+
+        ${escapeHtml(
+          result.reference
+        )}
+
+        <br>
+
+
+        <strong>
+          Distance:
+        </strong>
+
+        ${escapeHtml(
+          result.distance ||
+          "-"
+        )}
+
+        <br>
+
+
+        <strong>
+          Jersey Size:
+        </strong>
+
+        ${escapeHtml(
+          result.jerseySize ||
+          "No Jersey"
+        )}
+
+        <br>
+
+
+        <strong>
+          Payment:
+        </strong>
+
+        ${escapeHtml(
+          result.paymentStatus
+        )}
+
+        <br>
+
+
+        <strong>
+          Check-In Time:
+        </strong>
+
+        ${escapeHtml(
+          result.checkInTime ||
+          "-"
+        )}
+
+      </div>
+
+
+      <div style="
+        margin-top:18px;
+        font-size:18px;
+        font-weight:bold;
+      ">
+        Rider successfully checked in.
+      </div>
+    `;
+
+
+    nextButton.style.display =
+      "block";
+
+
+    return;
+  }
+
+
+  /*
+   * PAYMENT BLOCKED
+   */
+  if (
+    result.type ===
+      "payment_blocked"
+  ) {
+
+    resultBox.className =
+      "result warning";
+
+
+    resultBox.innerHTML = `
+
+      <div class="icon">
+        !
+      </div>
+
+
+      <h2>
+        Payment Required
+      </h2>
+
+
+      <div class="participant-name">
+
+        ${escapeHtml(
+          result.firstName
+        )}
+
+        ${escapeHtml(
+          result.lastName
+        )}
+
+      </div>
+
+
+      <div class="details">
+
+        <strong>
+          Distance:
+        </strong>
+
+        ${escapeHtml(
+          result.distance ||
+          "-"
+        )}
+
+        <br>
+
+
+        <strong>
+          Jersey Size:
+        </strong>
+
+        ${escapeHtml(
+          result.jerseySize ||
+          "No Jersey"
+        )}
+
+        <br>
+
+
+        <strong>
+          Payment Status:
+        </strong>
+
+        <span class="${paymentClass}">
+          ${escapeHtml(
+            paymentStatus
+          )}
+        </span>
+
+      </div>
+
 
       <p>
         ${escapeHtml(
-          result.message ||
-          "Unable to retrieve participant."
+          result.message
         )}
       </p>
     `;
@@ -993,9 +1334,101 @@
 
     nextButton.style.display =
       "block";
+
+
+    return;
   }
 
 
+  /*
+   * ALREADY CHECKED IN
+   */
+  if (
+    result.type ===
+      "already_checked_in"
+  ) {
+
+    resultBox.className =
+      "result warning";
+
+
+    resultBox.innerHTML = `
+
+      <div class="icon">
+        !
+      </div>
+
+
+      <h2>
+        Already Checked In
+      </h2>
+
+
+      <div class="participant-name">
+
+        ${escapeHtml(
+          result.firstName
+        )}
+
+        ${escapeHtml(
+          result.lastName
+        )}
+
+      </div>
+
+
+      <p>
+        Check-in time:
+        <strong>
+          ${escapeHtml(
+            result.checkInTime ||
+            "-"
+          )}
+        </strong>
+      </p>
+    `;
+
+
+    nextButton.style.display =
+      "block";
+
+
+    return;
+  }
+
+
+  /*
+   * OTHER ERROR
+   */
+  resultBox.className =
+    "result error";
+
+
+  resultBox.innerHTML = `
+
+    <div class="icon">
+      ×
+    </div>
+
+
+    <h2>
+      Unable to Continue
+    </h2>
+
+
+    <p>
+      ${escapeHtml(
+        result.message ||
+        "Unable to process rider."
+      )}
+    </p>
+  `;
+
+
+  nextButton.style.display =
+    "block";
+}
+ 
   /**************************************************
    * PAYMENT DISPLAY
    **************************************************/
